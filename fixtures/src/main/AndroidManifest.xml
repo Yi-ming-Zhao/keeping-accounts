@@ -1,0 +1,1 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"><uses-permission android:name="android.permission.POST_NOTIFICATIONS"/><application android:theme="@android:style/Theme.Material.Light.NoActionBar" android:label="交易场景测试"><activity android:name=".ScenarioActivity" android:exported="true"/></application></manifest>

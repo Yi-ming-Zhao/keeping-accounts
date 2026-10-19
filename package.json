@@ -1,0 +1,19 @@
+{
+  "name": "local-ledger-agent",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "build:agent": "node agent/build.mjs",
+    "test": "node agent/build.mjs && node --test agent/test/*.test.mjs"
+  },
+  "dependencies": {
+    "@earendil-works/pi-agent-core": "1.3.0",
+    "@earendil-works/pi-ai": "1.3.0",
+    "core-js-pure": "3.46.0",
+    "typebox": "1.3.27"
+  },
+  "devDependencies": {
+    "esbuild": "0.25.12"
+  }
+}
