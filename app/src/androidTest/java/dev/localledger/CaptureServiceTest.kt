@@ -6,6 +6,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import dev.localledger.capture.ReceiptParser
 import dev.localledger.data.*
 import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.first
 import org.junit.*
 import org.junit.Assert.*
 import org.junit.runner.RunWith
@@ -16,8 +17,8 @@ class CaptureServiceTest {
  private val pkg="dev.localledger.fixtures"
  private val prefix="QA${System.currentTimeMillis()}"
  private fun shell(command:String) {InstrumentationRegistry.getInstrumentation().getUiAutomation(android.app.UiAutomation.FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES).executeShellCommand(command).use { android.os.ParcelFileDescriptor.AutoCloseInputStream(it).readBytes() }}
- private fun launch(text:String,notification:Boolean=false,id:Int=1) {
-  app.startActivity(Intent().setClassName(pkg,"$pkg.ScenarioActivity").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK).putExtra("receipt",text).putExtra("notification",notification).putExtra("notificationId",id))
+ private fun launch(text:String,notification:Boolean=false,id:Int=1,searchField:Boolean=false,combinedNode:Boolean=false,churn:Boolean=false,passwordField:Boolean=false,notificationReceipt:String?=null) {
+  app.startActivity(Intent().setClassName(pkg,"$pkg.ScenarioActivity").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK).putExtra("notificationReceipt",notificationReceipt).putExtra("passwordField",passwordField).putExtra("searchField",searchField).putExtra("combinedNode",combinedNode).putExtra("churn",churn).putExtra("receipt",text).putExtra("notification",notification).putExtra("notificationId",id))
  }
  private suspend fun awaitEntries(order:String,expected:Int=1):List<LedgerEntry> {
   repeat(50) {
@@ -27,7 +28,7 @@ class CaptureServiceTest {
   }
   error("采集服务未生成预期记录：$order")
  }
- @Test fun actualNotificationAndAccessibilityPaths()=runBlocking {
+ @Before fun connectServices()=runBlocking {
   check(android.os.Build.MODEL.contains("sdk_gphone"))
   app.settings.allow(pkg,true)
   shell("pm grant $pkg android.permission.POST_NOTIFICATIONS")
@@ -37,6 +38,121 @@ class CaptureServiceTest {
   shell("settings put secure enabled_accessibility_services dev.localledger/dev.localledger.capture.PaymentAccessibilityService")
   shell("settings put secure accessibility_enabled 1")
   delay(2000)
+ }
+ @Test fun inlineNotificationRecordsPaymentWithoutOrderPage()=runBlocking {
+  val order="$prefix-INLINE"
+  launch("首页",notification=true,id=31,notificationReceipt="支付成功，商品金额：10.00，优惠金额：3.62，实付款：6.38元，商户：京东，订单号：$order")
+  val row=awaitEntries(order).single()
+  assertEquals(638L,row.amountMinor)
+  assertEquals("notification",app.database.book().evidence(row.evidenceId)!!.channel)
+ }
+ @Test fun messagingNotificationsKeepTwoPaymentsAndReplayWithoutDuplicates()=runBlocking {
+  val first="$prefix-MESSAGE1";val second="$prefix-MESSAGE2"
+  val messageTime=System.currentTimeMillis()
+  fun post() {
+   app.startActivity(Intent().setClassName(pkg,"$pkg.ScenarioActivity").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
+    .putExtra("receipt","首页").putExtra("notification",true).putExtra("notificationId",32).putExtra("messageTime",messageTime)
+    .putExtra("paymentMessages",arrayOf("支付成功\n实付款：6.38\n订单号：$first","支付成功\n实付款：6.38\n订单号：$second")))
+  }
+  post()
+  val a=awaitEntries(first).single();val b=awaitEntries(second).single()
+  assertNotEquals(a.id,b.id);assertEquals(638L,a.amountMinor);assertEquals(638L,b.amountMinor)
+  assertEquals("notification",app.database.book().evidence(a.evidenceId)!!.channel)
+  post();delay(1200)
+  assertEquals(1,awaitEntries(first).size);assertEquals(1,awaitEntries(second).size)
+  assertFalse(app.database.book().evidence(a.evidenceId)!!.text.contains("普通聊天"))
+ }
+ @Test fun idlessMessagesKeepEqualAmountPaymentsSeparateAndReplayOnce()=runBlocking {
+  val merchant="$prefix-商户";val time=System.currentTimeMillis()
+  fun post() {
+   app.startActivity(Intent().setClassName(pkg,"$pkg.ScenarioActivity").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
+    .putExtra("receipt","首页").putExtra("notification",true).putExtra("notificationId",33).putExtra("messageTime",time)
+    .putExtra("paymentMessages",arrayOf("支付成功，实付款：6.38元，商户：$merchant","支付成功，实付款：6.38元，商户：$merchant")))
+  }
+  post()
+  var entries=emptyList<LedgerEntry>()
+  repeat(50){if(entries.size!=2){delay(200);entries=app.database.book().filtered(0,Long.MAX_VALUE,merchant,null,10).first()}}
+  assertEquals(2,entries.size)
+  assertTrue(entries.all{it.amountMinor==638L&&it.orderId==null})
+  assertEquals(setOf(time,time+1),entries.map{it.occurredAt}.toSet())
+  post();delay(1500)
+  assertEquals(2,app.database.book().filtered(0,Long.MAX_VALUE,merchant,null,10).first().size)
+ }
+ @Test fun receiptWithSearchField()=runBlocking {
+  val order="$prefix-SEARCH"
+  launch("订单详情\n支付成功\n实付款：6.38\n订单号：$order",searchField=true)
+  val row=awaitEntries(order).single()
+  assertEquals(638L,row.amountMinor)
+  assertFalse(app.database.book().evidence(row.evidenceId)!!.text.contains("不应采集"))
+ }
+ @Test fun combinedAccessibleNode()=runBlocking {
+  val order="$prefix-COMBINED"
+  launch("订单详情\n先用后付\n下单成功\n待扣款金额：28.80\n订单号：$order",combinedNode=true)
+  val row=awaitEntries(order).single()
+  assertEquals("deferred",row.kind);assertEquals(2880L,row.amountMinor)
+ }
+ @Test fun continuousPageUpdatesCannotStarveCapture()=runBlocking {
+  val order="$prefix-CHURN"
+  launch("订单详情\n付款成功\n实付款：6.38\n订单号：$order",churn=true)
+  assertEquals(638L,awaitEntries(order).single().amountMinor)
+ }
+ private suspend fun awaitCondition(condition:()->Boolean) {
+  repeat(50){if(condition())return;delay(200)}
+  check(condition())
+ }
+ @Test fun accessibilityReconnectReadsAlreadyOpenOrder()=runBlocking {
+  shell("settings put secure enabled_accessibility_services null")
+  awaitCondition{!app.captureDiagnostics.health.value.pageConnected}
+  val order="$prefix-PAGE-RECONNECT"
+  launch("订单详情\n先用后付\n下单成功\n待扣款金额：28.80\n订单号：$order",combinedNode=true)
+  delay(900)
+  assertTrue(app.database.book().ordersByExternalId(order).isEmpty())
+  shell("settings put secure enabled_accessibility_services dev.localledger/dev.localledger.capture.PaymentAccessibilityService")
+  shell("settings put secure accessibility_enabled 1")
+  assertEquals("deferred",awaitEntries(order).single().kind)
+  assertTrue(app.captureDiagnostics.health.value.pageConnected)
+ }
+ @Test fun reconnectReadsExistingNotificationWithoutOpeningOrder()=runBlocking {
+  shell("cmd notification disallow_listener dev.localledger/dev.localledger.capture.PaymentNotificationService")
+  awaitCondition{!app.captureDiagnostics.health.value.notificationConnected}
+  val order="$prefix-RECONNECT"
+  launch("首页",notification=true,id=17,notificationReceipt="付款成功\n实付款：6.38\n订单号：$order")
+  delay(700)
+  assertTrue(app.database.book().ordersByExternalId(order).isEmpty())
+  shell("cmd notification allow_listener dev.localledger/dev.localledger.capture.PaymentNotificationService")
+  val row=awaitEntries(order).single()
+  assertEquals(638L,row.amountMinor)
+  assertEquals("notification",app.database.book().evidence(row.evidenceId)!!.channel)
+  assertTrue(app.captureDiagnostics.health.value.notificationConnected)
+  // A second connection replays the same notification, without creating another entry.
+  shell("cmd notification disallow_listener dev.localledger/dev.localledger.capture.PaymentNotificationService")
+  awaitCondition{!app.captureDiagnostics.health.value.notificationConnected}
+  shell("cmd notification allow_listener dev.localledger/dev.localledger.capture.PaymentNotificationService")
+  awaitCondition{app.captureDiagnostics.health.value.notificationConnected}
+  delay(700)
+  assertEquals(1,awaitEntries(order).size)
+ }
+ @Test fun authorizingAppReplaysItsVisibleNotification()=runBlocking {
+  app.settings.allow(pkg,false)
+  val order="$prefix-AUTHORIZE"
+  launch("首页",notification=true,id=18,notificationReceipt="下单成功\n先用后付\n待扣款金额：28.80\n订单号：$order")
+  delay(700)
+  assertTrue(app.database.book().ordersByExternalId(order).isEmpty())
+  app.settings.allow(pkg,true)
+  assertEquals("deferred",awaitEntries(order).single().kind)
+ }
+ @Test fun passwordAndUnrelatedPageDoNotPersistReceipts()=runBlocking {
+  val order="$prefix-PRIVATE"
+  launch("订单详情\n支付成功\n实付款：6.38\n订单号：$order",passwordField=true)
+  awaitCondition{app.captureDiagnostics.observations.value.any{it.pkg==pkg&&it.result==dev.localledger.capture.CaptureResult.PRIVATE_PAGE}}
+  assertTrue(app.database.book().ordersByExternalId(order).isEmpty())
+  launch("我的订单搜索\n请打开订单详情查看支付成功截图\n金额：6.38\n订单号：$order",searchField=true)
+  awaitCondition{app.captureDiagnostics.observations.value.any{it.pkg==pkg&&it.result==dev.localledger.capture.CaptureResult.NOT_RECEIPT}}
+  assertTrue(app.database.book().ordersByExternalId(order).isEmpty())
+  val metadata=app.getSharedPreferences("capture_health",android.content.Context.MODE_PRIVATE).all.values.joinToString()
+  assertFalse(metadata.contains(order));assertFalse(metadata.contains("6.38"));assertFalse(metadata.contains("private-password"))
+ }
+ @Test fun actualNotificationAndAccessibilityPaths()=runBlocking {
   val jd="$prefix-JD"
   val receipt="订单详情\n支付成功\n商品金额：10.00\n优惠金额：3.62\n实付款\n￥6.38\n店铺：青光文具\n商品名称：中性笔\n订单编号：$jd\n收货地址：测试私密地址\n手机号：13812345678"
   launch(receipt)

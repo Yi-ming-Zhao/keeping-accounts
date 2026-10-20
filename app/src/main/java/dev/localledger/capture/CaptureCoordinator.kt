@@ -7,10 +7,19 @@ import dev.localledger.data.*
 class CaptureCoordinator(private val app:LedgerApplication) {
  suspend fun accept(pkg:String,channel:String,key:String,text:String,time:Long=System.currentTimeMillis()):String? {
   if(channel!="share" && pkg !in app.settings.allowedPackages()) return null
-  val candidate=ReceiptParser.parse(text)?:return null
-  val id=app.repository.ingest(pkg,channel,key,time,candidate)?:return null
-  AnalysisWorker.enqueue(app,id)
-  return id
+  val candidate=(if(channel=="notification")ReceiptParser.parseNotification(text) else ReceiptParser.parse(text))?:run {app.captureDiagnostics.record(pkg,channel,CaptureResult.NO_FIELDS);return null}
+  try {
+   val id=app.repository.ingest(pkg,channel,key,time,candidate)
+   app.captureDiagnostics.record(pkg,channel,when {
+    id==null->CaptureResult.DUPLICATE
+    !candidate.confirmed->CaptureResult.UNCONFIRMED
+    candidate.amountMinor==null->CaptureResult.NEED_AMOUNT
+    else->CaptureResult.SAVED
+   })
+   if(id!=null)AnalysisWorker.enqueue(app,id)
+   return id
+  } catch(e:kotlinx.coroutines.CancellationException){throw e}
+  catch(e:Exception){app.captureDiagnostics.record(pkg,channel,CaptureResult.FAILED);throw e}
  }
  suspend fun enhance(id:String,result:OcrReceipt) {
   val book=app.database.book();val ev=book.evidence(id)?:return

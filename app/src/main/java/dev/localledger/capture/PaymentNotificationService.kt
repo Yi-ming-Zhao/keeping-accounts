@@ -1,25 +1,53 @@
 package dev.localledger.capture
 
-import android.app.Notification
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
+import android.content.SharedPreferences
 import dev.localledger.LedgerApplication
 import kotlinx.coroutines.launch
 
-class PaymentNotificationService:NotificationListenerService() {
+class PaymentNotificationService:NotificationListenerService(),SharedPreferences.OnSharedPreferenceChangeListener {
+ private val app get()=application as LedgerApplication
+ override fun onListenerConnected() {
+  app.captureDiagnostics.notificationConnected(true)
+  app.settings.preferences.registerOnSharedPreferenceChangeListener(this)
+  replayVisibleNotifications()
+ }
+ private fun replayVisibleNotifications() {
+  // Android can reconnect after process death. Only currently visible notifications
+  // are available; this cannot recover a notification the user already dismissed.
+  runCatching{activeNotifications?.forEach(::onNotificationPosted)}
+ }
+ override fun onSharedPreferenceChanged(prefs:SharedPreferences?,key:String?) {
+  if(key=="allowed_packages")replayVisibleNotifications()
+ }
+ override fun onListenerDisconnected() {
+  app.captureDiagnostics.notificationConnected(false)
+  app.settings.preferences.unregisterOnSharedPreferenceChangeListener(this)
+  requestRebind(android.content.ComponentName(this,PaymentNotificationService::class.java))
+ }
+ override fun onDestroy() {
+  app.captureDiagnostics.notificationConnected(false)
+  app.settings.preferences.unregisterOnSharedPreferenceChangeListener(this)
+  super.onDestroy()
+ }
  override fun onNotificationPosted(sbn:StatusBarNotification) {
-  val app=application as LedgerApplication
   if(sbn.packageName !in app.settings.allowedPackages()) return
-  if(sbn.notification.flags and Notification.FLAG_GROUP_SUMMARY != 0) return
-  val extras=sbn.notification.extras
-  val title=extras.getCharSequence(Notification.EXTRA_TITLE)?.toString().orEmpty()
-  if(sbn.packageName=="com.tencent.mm" && title !in setOf("微信支付","微信支付凭证","支付通知")) return
-  val body=extras.getCharSequence(Notification.EXTRA_BIG_TEXT)?.toString()
-   ?:extras.getCharSequence(Notification.EXTRA_TEXT)?.toString().orEmpty()
-  val raw="$title\n$body"
-  val candidate=ReceiptParser.parse(raw)?:return
   val stableTime=sbn.notification.`when`.takeIf { it>0 }?:sbn.postTime
-  val key="notification:${sbn.packageName}:${sbn.key}:$stableTime:${ReceiptParser.identityFingerprint(candidate)}"
-  app.scope.launch { CaptureCoordinator(app).accept(sbn.packageName,"notification",key,raw,stableTime) }
+  val notices=runCatching {PaymentNoticeContent.extract(sbn.packageName,AndroidNoticeReader.read(sbn.notification),stableTime)}
+   .getOrElse {app.captureDiagnostics.record(sbn.packageName,"notification",CaptureResult.NO_FIELDS);return}
+  if(notices.isEmpty()) {app.captureDiagnostics.record(sbn.packageName,"notification",CaptureResult.NOT_PAYMENT_NOTICE);return}
+  val occurrences=mutableMapOf<String,Int>()
+  val selected=notices.mapNotNull {notice->
+   val candidate=ReceiptParser.parseNotification(notice.text)?:return@mapNotNull null
+   val identity="${if(notice.message) "message:" else ""}${notice.time}:${ReceiptParser.identityFingerprint(candidate)}"
+   val occurrence=occurrences.getOrDefault(identity,0);occurrences[identity]=occurrence+1
+   val key="notification:${sbn.packageName}:${sbn.key}:$identity"+if(occurrence==0) "" else ":$occurrence"
+   notice to key
+  }
+  if(selected.isEmpty()) {app.captureDiagnostics.record(sbn.packageName,"notification",CaptureResult.NO_FIELDS);return}
+  app.scope.launch {
+   selected.forEach {(notice,key)->CaptureCoordinator(app).accept(sbn.packageName,"notification",key,notice.text,notice.time)}
+  }
  }
 }

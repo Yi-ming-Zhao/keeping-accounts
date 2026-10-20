@@ -1,0 +1,19 @@
+{
+  "version": "0.2.1-rc1",
+  "versionCode": 3,
+  "status": "awaiting_physical_device_verification",
+  "published": false,
+  "physicalDeviceVerified": false,
+  "apk": "keeping-accounts-0.2.1-rc1-arm64.apk",
+  "bytes": 24258775,
+  "sha256": "f00cb9b40745188420934201a2ff7d53a96e0f6ab34a597c6ca6d46fb39a2499",
+  "signatureVerified": true,
+  "credentialScanPassed": true,
+  "verificationDocument": "docs/CAPTURE_FIX_0.2.1.md",
+  "checks": {
+    "androidServiceScenarios": 8,
+    "finalBoundaryScenarios": 2,
+    "settingsUi": 1,
+    "signedUpgrade": "0.2.0 -> 0.2.1-rc1, book and settings retained"
+  }
+}

@@ -1,0 +1,70 @@
+{
+  "version": "0.2.1",
+  "versionCode": 5,
+  "date": "2026-10-21",
+  "channel": "stable",
+  "device": "ARM64 Android 16 emulator, 1260x2800",
+  "physicalDeviceVerified": false,
+  "actualWechatNotificationVerified": false,
+  "artifacts": [
+    {
+      "file": "keeping-accounts-0.2.1-arm64.apk",
+      "bytes": 24258767,
+      "sha256": "11143cb0b61efc18f5e7a01a1a34603920bd6eba4d5cc133376ed55ec6c8c322"
+    },
+    {
+      "file": "keeping-accounts-0.2.1-source.zip",
+      "bytes": 5982943,
+      "sha256": "4fb57d0c46b352899920d9a4f6b1009edf0411301a4cb69639c801dc5075b354"
+    }
+  ],
+  "signatureVerified": true,
+  "zipAlignment16KB": true,
+  "nativeLibraries": [
+    {
+      "path": "lib/arm64-v8a/libandroidx.graphics.path.so",
+      "minLoadAlignment": 16384
+    },
+    {
+      "path": "lib/arm64-v8a/libjpeg.so",
+      "minLoadAlignment": 16384
+    },
+    {
+      "path": "lib/arm64-v8a/libleptonica.so",
+      "minLoadAlignment": 16384
+    },
+    {
+      "path": "lib/arm64-v8a/libpngx.so",
+      "minLoadAlignment": 16384
+    },
+    {
+      "path": "lib/arm64-v8a/libquickjs.so",
+      "minLoadAlignment": 16384
+    },
+    {
+      "path": "lib/arm64-v8a/libsqlcipher.so",
+      "minLoadAlignment": 16384
+    },
+    {
+      "path": "lib/arm64-v8a/libtesseract.so",
+      "minLoadAlignment": 16384
+    }
+  ],
+  "credentialScanPassed": true,
+  "upgrade": {
+    "from": "0.2.0",
+    "to": "0.2.1",
+    "passed": true,
+    "evidence": ".local/stable-v021-upgrade.log"
+  },
+  "reusedFunctionalEvidence": {
+    "reason": "Capture implementation unchanged from tested rc2; stable build changes version only.",
+    "notificationAndroidChecks": 7,
+    "notificationAndParserUnitChecks": 19,
+    "documents": [
+      "docs/CAPTURE_FIX_0.2.1.md",
+      "docs/NOTIFICATION_FIX_0.2.1_RC2.md"
+    ]
+  },
+  "releaseDocument": "docs/RELEASE_0.2.1.md"
+}

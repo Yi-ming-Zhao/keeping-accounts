@@ -20,11 +20,12 @@ object ReleaseUpdates {
  const val REPOSITORY="https://github.com/Yi-ming-Zhao/keeping-accounts"
  data class Release(val tag:String,val notes:String,val url:String,val newer:Boolean)
  fun newer(tag:String,current:String):Boolean {
-  fun parts(value:String)=value.removePrefix("v").split('.').map{it.toIntOrNull()?:-1}
+  if(!tag.matches(Regex("v?[0-9]+\\.[0-9]+\\.[0-9]+")))return false
+  fun parts(value:String)=value.removePrefix("v").substringBefore('-').split('.').map{it.toIntOrNull()?:-1}
   val a=parts(tag);val b=parts(current)
-  if(a.size!=3||b.size!=3||a.any{it<0})return false
+  if(a.size!=3||b.size!=3||a.any{it<0}||b.any{it<0})return false
   for(i in 0..2){if(a[i]!=b[i])return a[i]>b[i]}
-  return false
+  return '-' in current && '-' !in tag
  }
  suspend fun check():Release=withContext(Dispatchers.IO) {
   val client=OkHttpClient.Builder().callTimeout(12,TimeUnit.SECONDS).followRedirects(false).build()

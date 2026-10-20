@@ -37,6 +37,21 @@ object ReceiptParser {
  }
  private fun field(lines:List<String>,keys:List<String>)=values(lines,keys).firstOrNull()
  private fun money(value:String):Long?=moneyValue.matchEntire(value.trim())?.groupValues?.get(1)?.let(Money::parse)
+ private val notificationFieldBoundary by lazy {
+  val labels=(amountLabels+dataLabels).joinToString("|"){Regex.escape(it)}
+  Regex("[，；;]\\s*(?=(?:$labels)[:：])")
+ }
+ fun parseNotification(raw:String):ReceiptCandidate? {
+  if(raw.length>30_000)return null
+  // Split only before known labelled fields, not at thousands separators or in merchant names.
+  val normalized=raw.replace(notificationFieldBoundary,"\n")
+   .lines().joinToString("\n"){it.trim().removeSuffix("。")}
+  // A flat summary with several transactions cannot be treated as one payment.
+  val lines=normalized.lines()
+  if(values(lines,listOf("订单号","订单编号","商户单号")).distinct().size>1 ||
+   values(lines,listOf("交易号","交易单号","支付单号")).distinct().size>1)return null
+  return parse(normalized)
+ }
  fun parse(raw:String):ReceiptCandidate? {
   if(raw.length>30_000)return null
   val lines=raw.replace('\u00a0',' ').lines().map {it.trim()}.filter {it.isNotBlank()}

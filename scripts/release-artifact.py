@@ -3,6 +3,11 @@
 from pathlib import Path
 import hashlib,json,subprocess,zipfile,shutil,struct,xml.etree.ElementTree as ET
 root=Path(__file__).resolve().parents[1]
+# This script freezes the already published 0.2.0 evidence. Never let a later
+# candidate overwrite those artifacts or inherit its old verification results.
+metadata=json.loads((root/'app/build/outputs/apk/release/output-metadata.json').read_text())
+assert {item['versionName'] for item in metadata['elements']}=={'0.2.0'},'This packager only supports the frozen 0.2.0 release'
+assert not any((root/'artifacts'/name).exists() for name in ['keeping-accounts-0.2.0-arm64.apk','keeping-accounts-0.2.0-source.zip']),'Frozen 0.2.0 artifacts must not be overwritten'
 out=root/'artifacts';out.mkdir(exist_ok=True)
 source=root/'app/build/outputs/apk/release/app-release.apk'
 assert source.exists(),'Build the signed release first'

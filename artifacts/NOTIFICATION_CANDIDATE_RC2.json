@@ -1,0 +1,27 @@
+{
+  "version": "0.2.1-rc2",
+  "versionCode": 4,
+  "date": "2026-10-21",
+  "published": false,
+  "status": "awaiting_actual_payment_notification_evidence",
+  "physicalDeviceVerified": false,
+  "actualWechatNotificationVerified": false,
+  "apk": "keeping-accounts-0.2.1-rc2-arm64.apk",
+  "bytes": 24258775,
+  "sha256": "75783622a7309eda92f33d5249aac73e53ea1c3cda72591a913f1bdbc0a4a2d6",
+  "signatureVerified": true,
+  "credentialScanPassed": true,
+  "unitTests": [
+    {
+      "name": "PaymentNoticeContentTest",
+      "passed": 6
+    },
+    {
+      "name": "ReceiptParserTest",
+      "passed": 13
+    }
+  ],
+  "androidNotificationChecks": 7,
+  "upgrade": "0.2.0 -> 0.2.1-rc2 preserves book and settings",
+  "verificationDocument": "docs/NOTIFICATION_FIX_0.2.1_RC2.md"
+}
