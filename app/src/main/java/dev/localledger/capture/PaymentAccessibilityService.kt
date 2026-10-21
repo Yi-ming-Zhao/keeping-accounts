@@ -19,6 +19,7 @@ class PaymentAccessibilityService:AccessibilityService(),SharedPreferences.OnSha
  private var session=UUID.randomUUID().toString()
  private var previous:String?=null
  private var lastScreenshotAt=0L
+ private var screenshotRetries=0
  private val debounce=CaptureDebounce()
  private var lastWindow:Int?=null
  private var lastPackage:String?=null
@@ -45,7 +46,7 @@ class PaymentAccessibilityService:AccessibilityService(),SharedPreferences.OnSha
   val pkg=event?.packageName?.toString()?:return
   if(pkg !in app.settings.allowedPackages()) return
   if(lastWindow!=event.windowId || lastPackage!=pkg) {
-   session=UUID.randomUUID().toString();previous=null;debounce.reset()
+   session=UUID.randomUUID().toString();previous=null;debounce.reset();lastScreenshotAt=0L;screenshotRetries=0
    lastWindow=event.windowId;lastPackage=pkg
   }
   rootRetries=0
@@ -61,13 +62,14 @@ class PaymentAccessibilityService:AccessibilityService(),SharedPreferences.OnSha
   if(pkg !in app.settings.allowedPackages()) return
   val texts=ArrayList<String>();var password=false;var editable=false;var visited=0
   fun visit(node:AccessibilityNodeInfo,depth:Int) {
-   if(++visited>600||depth>25||!node.isVisibleToUser)return
-   if(node.isPassword){password=true;return}
+   if(++visited>1200||depth>35)return
+   if(node.isPassword){if(node.isVisibleToUser)password=true;return}
+   if(Regex("address|consignee|receiver|recipient|phone|mobile|contact",RegexOption.IGNORE_CASE).containsMatchIn(node.viewIdResourceName.orEmpty().substringAfter(":id/")))return
    // A search box outside a receipt must not discard the entire order. Its subtree
    // is excluded. Screenshots remain disabled for any page containing inputs.
-   if(node.isEditable){editable=true;return}
+   if(node.isEditable){if(node.isVisibleToUser)editable=true;return}
    val value=node.text?.toString()?.takeIf{it.isNotBlank()}?:node.contentDescription?.toString()?.takeIf{it.isNotBlank()}
-   value?.let {
+   value?.takeIf{node.isVisibleToUser}?.let {
     val id=node.viewIdResourceName.orEmpty().substringAfter(":id/")
     val label=when {
      Regex("(^|_)(goods|product|ware|sku)_(name|title)($|_)").containsMatchIn(id)->"商品名称："
@@ -79,11 +81,12 @@ class PaymentAccessibilityService:AccessibilityService(),SharedPreferences.OnSha
    for(i in 0 until node.childCount) node.getChild(i)?.let { visit(it,depth+1) }
   }
   visit(root,0)
-  if(password || (editable&&pkg=="com.tencent.mm")) { previous=null;app.captureDiagnostics.record(pkg,"page",CaptureResult.PRIVATE_PAGE);return }
-  val raw=texts.joinToString("\n")
+  if(password || (editable&&pkg in PaymentNoticeContent.privateMessageApps)) { previous=null;app.captureDiagnostics.record(pkg,"page",CaptureResult.PRIVATE_PAGE);return }
+  val raw=texts.distinct().joinToString("\n").take(30_000)
   // WeChat shares its process with chats. Require receipt/order page structure, never scan arbitrary chat bodies.
-  val receiptPage=PageReceiptBoundary.isReceipt(texts,pkg)
-  if(!receiptPage) { previous=null;session=UUID.randomUUID().toString();app.captureDiagnostics.record(pkg,"page",CaptureResult.NOT_RECEIPT);return }
+  val receiptPage=PageReceiptBoundary.isReceipt(texts,pkg)||(!editable&&CandidateEvidence.financialPage(texts,pkg))
+  val imageOnly=app.settings.screenshots&&android.os.Build.VERSION.SDK_INT>=34&&!editable&&pkg !in PaymentNoticeContent.privateMessageApps&&texts.size<3
+  if(!receiptPage&&!imageOnly) { previous=null;session=UUID.randomUUID().toString();app.captureDiagnostics.record(pkg,"page",CaptureResult.NOT_RECEIPT);return }
   val candidate=ReceiptParser.parse(raw)
   val fingerprint=candidate?.let(ReceiptParser::identityFingerprint)?:ReceiptParser.fingerprint(raw)
   val capturedSession=session
@@ -92,7 +95,8 @@ class PaymentAccessibilityService:AccessibilityService(),SharedPreferences.OnSha
   inFlight.add(attempt)
   val capture=app.scope.async {
    try {
-    CaptureCoordinator(app).accept(pkg,"page","page:$pkg:$capturedSession:$fingerprint",raw).also {
+    if(!receiptPage)return@async null
+    CaptureCoordinator(app).accept(pkg,"page","page:$pkg:$capturedSession:$fingerprint",raw,receiptPage=true).also {
      handler.post {if(session==capturedSession)previous=fingerprint}
     }
    } finally {handler.post{inFlight.remove(attempt)}}
@@ -121,7 +125,17 @@ class PaymentAccessibilityService:AccessibilityService(),SharedPreferences.OnSha
       finally { bitmap.recycle() }
      }
     }
-    override fun onFailure(errorCode:Int) { app.captureDiagnostics.record(pkg,"ocr",CaptureResult.IMAGE_DENIED) }
+    override fun onFailure(errorCode:Int) {
+     app.captureDiagnostics.record(pkg,"ocr",when(errorCode){
+      ERROR_TAKE_SCREENSHOT_SECURE_WINDOW->CaptureResult.IMAGE_SECURE
+      ERROR_TAKE_SCREENSHOT_INVALID_WINDOW->CaptureResult.IMAGE_WINDOW_NOT_READY
+      ERROR_TAKE_SCREENSHOT_INTERVAL_TIME_SHORT->CaptureResult.IMAGE_RATE_LIMITED
+      else->CaptureResult.IMAGE_DENIED
+     })
+     if(imageOnly&&errorCode in setOf(ERROR_TAKE_SCREENSHOT_INTERNAL_ERROR,ERROR_TAKE_SCREENSHOT_INTERVAL_TIME_SHORT,ERROR_TAKE_SCREENSHOT_INVALID_WINDOW)&&session==capturedSession&&screenshotRetries++<2) {
+      lastScreenshotAt=0;handler.removeCallbacks(scan);handler.postDelayed(scan,1000)
+     }
+    }
    })
   }
  }

@@ -78,6 +78,47 @@ class CaptureServiceTest {
   post();delay(1500)
   assertEquals(2,app.database.book().filtered(0,Long.MAX_VALUE,merchant,null,10).first().size)
  }
+ @Test fun bankProseNotificationAndFulfilledOrderAreBothCaptured()=runBlocking {
+  val merchant="$prefix-京东"
+  launch("首页",notification=true,id=34,notificationReceipt="招商银行\n您尾号1234的储蓄卡于${merchant}消费人民币6.38元，余额10,000.00元。")
+  var rows=emptyList<LedgerEntry>()
+  repeat(50){if(rows.isEmpty()){delay(200);rows=app.database.book().filtered(0,Long.MAX_VALUE,merchant,null,10).first()}}
+  assertEquals(638L,rows.single().amountMinor)
+  assertFalse(app.database.book().evidence(rows.single().evidenceId)!!.text.contains("1234"))
+  val order="$prefix-FULFILLED"
+  launch("订单详情\n等待收货\n实付款：¥6.38\n商品金额：¥10.00\n订单编号：$order")
+  assertEquals(638L,awaitEntries(order).single().amountMinor)
+ }
+ @Test fun unknownPageWordingPersistsForAgentWithoutFixedTitle()=runBlocking {
+  val token="$prefix-UNKNOWN"
+  launch("本次结算\n款项已从账户划走 6.38 元\n业务编号：$token")
+  var evidence:Evidence?=null
+  repeat(50){if(evidence==null){delay(200);evidence=app.database.book().evidenceSearch(0,Long.MAX_VALUE,100).firstOrNull{it.text.contains(token)}}}
+  assertNotNull(evidence)
+  assertEquals("page",evidence!!.channel)
+  assertNotNull(app.database.book().job(evidence!!.id))
+  assertTrue(app.database.book().forEvidence(evidence!!.id).isEmpty())
+ }
+ @Test fun deferredUseNoticeDoesNotRequirePaymentSuccessBanner()=runBlocking {
+  val order="$prefix-DEFERNOTICE"
+  launch("首页",notification=true,id=35,notificationReceipt="微信支付分\n先用后付使用通知\n你在拼多多有一笔先用后付订单，待付款金额：28.80元，订单号：$order")
+  val row=awaitEntries(order).single()
+  assertEquals("deferred",row.kind);assertEquals(2880L,row.amountMinor)
+ }
+ @Test fun optedInLocalOcrReadsImageOnlyReceipt()=runBlocking {
+  val old=app.settings.screenshots
+  app.settings.screenshots=true
+  val start=System.currentTimeMillis()
+  try {
+   app.startActivity(Intent().setClassName(pkg,"$pkg.ScenarioActivity").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
+    .putExtra("canvasReceipt",true).putExtra("receipt","订单详情\n支付成功\n实付款：6.38元\n商户：京东"))
+   val evidence=withTimeout(45_000){var found:Evidence?=null;while(found==null){found=app.database.book().evidenceSearch(start,Long.MAX_VALUE,50).firstOrNull{it.channel=="ocr"};if(found==null)delay(500)};found}
+   assertTrue("OCR must preserve the amount for agent recognition",evidence.text.contains("6.38"))
+   assertNotNull(app.database.book().job(evidence.id))
+   app.database.book().forEvidence(evidence.id).singleOrNull()?.let{assertEquals(638L,it.amountMinor)}
+   Unit
+  } finally {app.settings.screenshots=old}
+ }
  @Test fun receiptWithSearchField()=runBlocking {
   val order="$prefix-SEARCH"
   launch("订单详情\n支付成功\n实付款：6.38\n订单号：$order",searchField=true)

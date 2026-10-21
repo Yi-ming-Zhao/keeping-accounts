@@ -6,7 +6,7 @@ import java.security.MessageDigest
 /** Only payment facts are retained. A notification sender or page boundary must be checked first. */
 data class ReceiptCandidate(val text:String,val amountMinor:Long?,val merchant:String?,val externalId:String?,val orderId:String?,val kind:String,val confirmed:Boolean,val occurredAt:Long?=null)
 object PrivacyFilter {
- private val sensitive=Regex("收货|收件|联系人|联系地址|手机号|手机号码|验证码|密码|银行卡号|身份证|账号|姓名|配送地址|详细地址")
+ private val sensitive=Regex("收货人|收货地址|收货信息|收件人|收件地址|联系人|联系地址|手机号|手机号码|验证码|密码|银行卡号|身份证|账号|姓名|配送地址|详细地址")
  fun safeLine(line:String):String? {
   if(sensitive.containsMatchIn(line)) return null
   return line.replace(Regex("(?<!\\d)1[3-9]\\d{9}(?!\\d)"),"[电话]")
@@ -17,11 +17,11 @@ object PrivacyFilter {
 object ReceiptParser {
  private val positive=Regex("支付成功|付款成功|交易成功|已付款|已支付|退款成功|还款成功|充值成功|交易完成|扣款成功")
  private val negative=Regex("待付款|等待付款|付款失败|支付失败|退款申请|退款处理中|还款失败|订单已取消|交易关闭|已取消订单")
- private val deferredStatus=Regex("下单成功|待发货|待收货|待扣款|确认收货后付款|确认收货后扣款|订单已确认")
+ private val deferredStatus=Regex("下单成功|待发货|待收货|待扣款|确认收货后付款|确认收货后扣款|订单已确认|等待商家发货|等待收货|等待买家确认收货|商家已发货")
  private val moneyValue=Regex("^[¥￥]?\\s*([0-9,]+(?:\\.[0-9]{1,2})?)(?:\\s*元)?$")
  private val currencyAmount=Regex("[¥￥]\\s*([0-9,]+(?:\\.[0-9]{1,2})?)(?![0-9.])")
- private val amountLabels=listOf("实付款","实付金额","实际付款","实际支付","实付","支付金额","付款金额","本次支付","合计实付","退款金额","还款金额","充值金额","扣款金额","待扣款金额","应付金额","应付款","订单金额","商品金额","金额")
- private val dataLabels=listOf("商户","商家","店铺","收款方","商户全称","商品","商品名称","数量","单价","运费","优惠","优惠金额","手续费","支付方式","付款方式","交易时间","付款时间","支付时间","退款时间","还款时间","订单编号","订单号","商户单号","交易单号","支付单号","交易号","退款单号","退款流水号")
+ private val amountLabels=listOf("实付款","实付金额","实际付款","实际支付","实付","支付金额","付款金额","本次支付","合计实付","退款金额","还款金额","充值金额","扣款金额","待扣款金额","待付款金额","合计","应付金额","应付款","订单金额","商品金额","金额")
+ private val dataLabels=listOf("商户","商家","店铺","收款方","商户全称","订单状态","商品","商品名称","数量","单价","运费","优惠","优惠金额","手续费","支付方式","付款方式","交易时间","付款时间","支付时间","退款时间","还款时间","订单编号","订单号","商户单号","交易单号","支付单号","交易号","退款单号","退款流水号")
  val pageTitles=setOf("支付成功","付款成功","交易详情","账单详情","订单详情","退款详情","还款成功","充值成功","下单成功","先用后付","付款详情","扣款成功")
  // Fields are anchored to a label. 商品金额 and 优惠金额 must never match 金额.
  private fun values(lines:List<String>,keys:List<String>):List<String> = lines.flatMapIndexed { index,line->
@@ -44,7 +44,7 @@ object ReceiptParser {
  fun parseNotification(raw:String):ReceiptCandidate? {
   if(raw.length>30_000)return null
   // Split only before known labelled fields, not at thousands separators or in merchant names.
-  val normalized=raw.replace(notificationFieldBoundary,"\n")
+  val normalized=ReceiptText.notification(raw).replace(notificationFieldBoundary,"\n")
    .lines().joinToString("\n"){it.trim().removeSuffix("。")}
   // A flat summary with several transactions cannot be treated as one payment.
   val lines=normalized.lines()
@@ -54,14 +54,17 @@ object ReceiptParser {
  }
  fun parse(raw:String):ReceiptCandidate? {
   if(raw.length>30_000)return null
-  val lines=raw.replace('\u00a0',' ').lines().map {it.trim()}.filter {it.isNotBlank()}
+  val lines=ReceiptText.lines(raw)
   val joined=lines.joinToString("\n")
   if(Regex("美元|港币|港元|日元|欧元|USD|HKD|JPY|EUR|\\$").containsMatchIn(joined))return null
   val cancelled=Regex("订单已取消|交易关闭|已取消订单").containsMatchIn(joined)
   val zeroCheckout=values(lines,listOf("实付款","实付金额","支付金额")).any{money(it)==0L}
   val deferred=joined.contains("先用后付")&&!cancelled&&!Regex("扣款成功|已扣款|退款成功|还款成功").containsMatchIn(joined)&&
-   ((deferredStatus.containsMatchIn(joined)&&!positive.containsMatchIn(joined))||(zeroCheckout&&values(lines,listOf("待扣款金额","应付金额","订单金额")).any{(money(it)?:0)>0}))
-  val paid=positive.containsMatchIn(joined)&&!negative.containsMatchIn(joined)
+   ((deferredStatus.containsMatchIn(joined)&&!positive.containsMatchIn(joined))||(zeroCheckout&&values(lines,listOf("待扣款金额","待付款金额","合计","应付金额","订单金额")).any{(money(it)?:0)>0}))
+  val actualPayment=values(lines,listOf("实付款","实付金额","实际付款","实际支付","实付","合计实付"))
+  val paidAmountOnOrder=lines.any{it in pageTitles} && actualPayment.any{(money(it)?:0L)>0L} &&
+   !Regex("先用后付|货到付款|到付|待扣款").containsMatchIn(joined)
+  val paid=(positive.containsMatchIn(joined)||paidAmountOnOrder)&&!negative.containsMatchIn(joined)&&!deferred
   if(!paid&&!deferred&&!lines.any {it in pageTitles})return null
   val kind=when {
    cancelled->"cancelled"
@@ -74,7 +77,7 @@ object ReceiptParser {
   val priorities=when(kind) {
    "refund"->listOf(listOf("退款金额"),listOf("金额"))
    "repayment"->listOf(listOf("还款金额","本次还款"),listOf("实付款","实付金额","金额"))
-   "deferred"->listOf(listOf("待扣款金额","应付金额","应付款"),listOf("订单金额"),listOf("实付款","实付金额"))
+   "deferred"->listOf(listOf("待扣款金额","待付款金额","应付金额","应付款"),listOf("订单金额","合计"),listOf("实付款","实付金额"))
    else->listOf(listOf("实付款","实付金额","实际付款","实际支付","实付","合计实付"),listOf("支付金额","付款金额","本次支付","扣款金额","充值金额"),listOf("金额"))
   }
   var minor:Long?=null;var labeled=false
@@ -90,6 +93,10 @@ object ReceiptParser {
   val external=field(lines,if(kind=="refund")listOf("退款单号","退款流水号") else listOf("交易单号","支付单号","交易号"))?.takeIf {it.matches(Regex("[A-Za-z0-9_-]{6,80}"))}
   val order=field(lines,listOf("商户单号","订单编号","订单号"))?.takeIf {it.matches(Regex("[A-Za-z0-9_-]{6,80}"))}
   val selected=mutableListOf<String>()
+  // Keep the inferred state grounded in explicit actual-payment fields across re-parsing.
+  if(paid&&paidAmountOnOrder&&!positive.containsMatchIn(joined))selected.add("支付成功")
+  if(deferred)selected.add("订单已确认")
+  if(!paid&&!deferred)lines.firstOrNull{it in pageTitles}?.let{selected.add(it)}
   for(line in lines) {
    (positive.find(line)?:negative.find(line)?:deferredStatus.find(line))?.value?.let {selected.add(it)}
   }

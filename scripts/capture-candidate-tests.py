@@ -40,6 +40,6 @@ test('dev.localledger.UpgradeTest#seedOldRelease', 1, '-e', 'oldVersion', '0.2.0
 print(run('install', '-r', str(root / 'app/build/outputs/apk/release/app-release.apk')), flush=True)
 test('dev.localledger.UpgradeTest#newReleasePreservesOldBook', 1, '-e', 'newVersion', new_version)
 # Exercise the optimized APK through Android's actual services.
-test('dev.localledger.CaptureServiceTest', 11)
+test('dev.localledger.CaptureServiceTest', 15)
 test('dev.localledger.NoticeReaderTest', 2)
-test('dev.localledger.CaptureStatusUiTest', 1)
+test('dev.localledger.CaptureStatusUiTest', 2)

@@ -5,11 +5,26 @@ import androidx.room.withTransaction
 import dev.localledger.data.*
 
 class CaptureCoordinator(private val app:LedgerApplication) {
- suspend fun accept(pkg:String,channel:String,key:String,text:String,time:Long=System.currentTimeMillis()):String? {
+ suspend fun accept(pkg:String,channel:String,key:String,text:String,time:Long=System.currentTimeMillis(),receiptPage:Boolean=false):String? {
   if(channel!="share" && pkg !in app.settings.allowedPackages()) return null
-  val candidate=(if(channel=="notification")ReceiptParser.parseNotification(text) else ReceiptParser.parse(text))?:run {app.captureDiagnostics.record(pkg,channel,CaptureResult.NO_FIELDS);return null}
+  val candidate=(if(channel=="notification")ReceiptParser.parseNotification(text) else ReceiptParser.parse(text))
+  if(candidate==null||!candidate.confirmed||candidate.amountMinor==null) {
+   val safe=CandidateEvidence.prepare(text,receiptPage)?:run{app.captureDiagnostics.record(pkg,channel,CaptureResult.NO_FIELDS);return null}
+   val id=app.database.withTransaction {
+    if(app.database.book().evidenceBySource(key)!=null)return@withTransaction null
+    val evidenceId=java.util.UUID.randomUUID().toString()
+    app.database.book().insertEvidence(Evidence(evidenceId,key,pkg,channel,time,safe))
+    app.database.book().saveJob(LedgerJob(evidenceId,evidenceId))
+    evidenceId
+   }
+   app.captureDiagnostics.record(pkg,channel,if(id==null)CaptureResult.DUPLICATE else CaptureResult.AGENT_PENDING)
+   if(id!=null)AnalysisWorker.enqueue(app,id)
+   return id
+  }
   try {
-   val id=app.repository.ingest(pkg,channel,key,time,candidate)
+   val context=CandidateEvidence.prepare(text,receiptPage)
+   val enriched=if(context!=null)candidate.copy(text=(candidate.text.lines()+context.lines()).distinct().joinToString("\n").take(8000))else candidate
+   val id=app.repository.ingest(pkg,channel,key,time,enriched)
    app.captureDiagnostics.record(pkg,channel,when {
     id==null->CaptureResult.DUPLICATE
     !candidate.confirmed->CaptureResult.UNCONFIRMED

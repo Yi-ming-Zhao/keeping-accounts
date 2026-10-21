@@ -15,7 +15,8 @@ class AppSettings(context:Context) {
   get()=preferences.getBoolean("screenshots",false)
   set(value){preferences.edit().putBoolean("screenshots",value).apply()}
  companion object {
-  val applications=linkedMapOf("com.tencent.mm" to "微信","com.eg.android.AlipayGphone" to "支付宝","com.sankuai.meituan" to "美团","com.taobao.taobao" to "淘宝","com.ss.android.ugc.aweme" to "抖音","com.jingdong.app.mall" to "京东","com.xunmeng.pinduoduo" to "拼多多")
+  val financialApplications=mapOf("cmb.pb" to "招商银行","com.cmbchina.ccd.pluto" to "掌上生活","com.android.mms" to "短信","com.vivo.mms" to "vivo 短信","com.google.android.apps.messaging" to "Google 信息")
+  val applications=linkedMapOf("com.tencent.mm" to "微信","com.eg.android.AlipayGphone" to "支付宝","com.sankuai.meituan" to "美团","com.taobao.taobao" to "淘宝","com.ss.android.ugc.aweme" to "抖音","com.jingdong.app.mall" to "京东","com.xunmeng.pinduoduo" to "拼多多").apply{putAll(financialApplications)}
   fun label(pkg:String)=applications[pkg]?:when(pkg){"manual"->"手动";"shared"->"分享导入";"dev.localledger.fixtures"->"交易样本";else->pkg}
  }
 }

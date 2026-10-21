@@ -1,0 +1,81 @@
+{
+  "version": "0.3.0",
+  "versionCode": 6,
+  "date": "2026-10-22",
+  "channel": "stable",
+  "device": "ARM64 Android 16 emulator, 1260x2800",
+  "physicalDeviceVerified": false,
+  "actualWechatNotificationVerified": false,
+  "artifacts": [
+    {
+      "file": "keeping-accounts-0.3.0-arm64.apk",
+      "bytes": 24307919,
+      "sha256": "0ec0b29ba91a52210ef839fe7d16ca0f5239dbab0b6c185ee1c1b3f328f54aab"
+    },
+    {
+      "file": "keeping-accounts-0.3.0-source.zip",
+      "bytes": 6005725,
+      "sha256": "95e3304eff24ed92b898a0b9e85d71f26b47a34aeb33296f1427fa3ba1c8ef59"
+    }
+  ],
+  "signatureVerified": true,
+  "zipAlignment16KB": true,
+  "nativeLibraries": [
+    {
+      "path": "lib/arm64-v8a/libandroidx.graphics.path.so",
+      "minLoadAlignment": 16384
+    },
+    {
+      "path": "lib/arm64-v8a/libjpeg.so",
+      "minLoadAlignment": 16384
+    },
+    {
+      "path": "lib/arm64-v8a/libleptonica.so",
+      "minLoadAlignment": 16384
+    },
+    {
+      "path": "lib/arm64-v8a/libpngx.so",
+      "minLoadAlignment": 16384
+    },
+    {
+      "path": "lib/arm64-v8a/libquickjs.so",
+      "minLoadAlignment": 16384
+    },
+    {
+      "path": "lib/arm64-v8a/libsqlcipher.so",
+      "minLoadAlignment": 16384
+    },
+    {
+      "path": "lib/arm64-v8a/libtesseract.so",
+      "minLoadAlignment": 16384
+    }
+  ],
+  "credentialScanPassed": true,
+  "upgrade": {
+    "from": "0.2.1",
+    "to": "0.3.0",
+    "passed": true,
+    "evidence": ".local/stable-v030-final-upgrade.log"
+  },
+  "functionalEvidence": {
+    "releaseAndroidChecks": 23,
+    "finalVisibilityRegressionChecks": 3,
+    "releaseEvidence": [
+      ".local/v030-final-validation.log (first 6 checks)",
+      ".local/v030-final-services.log",
+      ".local/v030-final-ui.log",
+      ".local/v030-visibility.log"
+    ],
+    "livePiModelNotificationCases": [
+      "unknown_expense_638",
+      "unknown_deferred_2880",
+      "advertisement_ignored",
+      "image_only_receipt_638"
+    ],
+    "liveModelEvidence": ".local/v030-live-complete.log",
+    "documents": [
+      "docs/RELEASE_0.3.0.md"
+    ]
+  },
+  "releaseDocument": "docs/RELEASE_0.3.0.md"
+}

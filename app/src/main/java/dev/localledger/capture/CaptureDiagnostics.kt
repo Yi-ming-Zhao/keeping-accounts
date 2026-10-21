@@ -6,12 +6,12 @@ import kotlinx.coroutines.flow.asStateFlow
 import org.json.JSONObject
 
 enum class CaptureResult(val label:String) {
- NO_WINDOW("页面暂不可读"), PRIVATE_PAGE("已跳过输入或密码页面"),
+ AGENT_PENDING("已保存，等待智能识别"), NOT_AUTHORIZED("通知来源未授权"), NO_WINDOW("页面暂不可读"), PRIVATE_PAGE("已跳过输入或密码页面"),
  NOT_RECEIPT("未发现订单或付款页面"), NO_FIELDS("未识别到交易字段"),
  SAVED("交易证据已保存"), NEED_AMOUNT("已保存，待确认金额"),
  UNCONFIRMED("已保存，尚未确认付款"), DUPLICATE("相同证据已保存"),
  FAILED("保存失败，请重新打开页面"), NOT_PAYMENT_NOTICE("未识别到支付通知来源"),
- IMAGE_DENIED("系统未允许截图"), OCR_FAILED("本机图片识别失败")
+ IMAGE_SECURE("受保护页面，无法截图"), IMAGE_WINDOW_NOT_READY("截图窗口尚未就绪"), IMAGE_RATE_LIMITED("截图请求间隔过短"), IMAGE_DENIED("系统未允许截图"), OCR_FAILED("本机图片识别失败")
 }
 data class CaptureObservation(val pkg:String,val channel:String,val result:CaptureResult,val time:Long)
 data class CaptureHealth(val pageConnected:Boolean=false,val notificationConnected:Boolean=false)

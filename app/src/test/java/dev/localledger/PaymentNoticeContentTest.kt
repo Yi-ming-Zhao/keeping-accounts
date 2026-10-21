@@ -42,6 +42,13 @@ class PaymentNoticeContentTest {
   assertNull(ReceiptParser.parseNotification("支付成功，实付款：6.38 USD"))
   assertEquals(123456L,ReceiptParser.parseNotification("支付成功，实付款：1,234.56元。")!!.amountMinor)
  }
+ @Test fun bankSmsIsIsolatedFromPrivateSmsAndCodes() {
+  val bank=PaymentNoticeContent.extract("com.android.mms",NoticeEnvelope(title="95555",text="您尾号1234的卡消费人民币6.38元，商户：京东"),100).single()
+  assertEquals(638L,ReceiptParser.parseNotification(bank.text)!!.amountMinor)
+  assertTrue(PaymentNoticeContent.extract("com.android.mms",NoticeEnvelope(title="朋友",text="我花了6.38元"),100).isEmpty())
+  val code=PaymentNoticeContent.extract("com.android.mms",NoticeEnvelope(title="95555",text="验证码123456，用于支付6.38元"),100).single()
+  assertNull(CandidateEvidence.prepare(code.text))
+ }
  @Test fun inboxLinesDoNotFuseTwoPayments() {
   val notices=PaymentNoticeContent.extract(pkg,NoticeEnvelope(title="微信",lines=listOf("朋友：私人聊天","微信支付：$paid","微信支付：${paid.replace("JD123456","JD123457")}")),100)
   assertEquals(2,notices.size)

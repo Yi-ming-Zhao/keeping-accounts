@@ -106,8 +106,9 @@ class MainActivity:ComponentActivity() {
   val days by remember(start,end){app.database.book().daily(start,end)}.collectAsState(emptyList())
   val review by remember(start,end){app.database.book().observeReviewCount(start,end)}.collectAsState(0)
   val unmatched by app.database.book().unmatchedEvidence().collectAsState(emptyList())
-  val totalReview=review+remember(unmatched){unmatched.count{ReceiptParser.parse(it.text)?.let{c->c.confirmed&&c.kind!="cancelled"&&c.amountMinor==null}==true}}
   val jobs by app.database.book().observeJobs().collectAsState(emptyList())
+  val totalReview=review+remember(unmatched,jobs){unmatched.count{ev->jobs.firstOrNull{it.id==ev.id}?.state!="ignored"&&ReceiptParser.parse(ev.text)?.kind!="cancelled"}}
+  val captureObservations by app.captureDiagnostics.observations.collectAsState()
   val scope=rememberCoroutineScope()
   Surface(Modifier.fillMaxSize()) {
    Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
@@ -142,6 +143,8 @@ class MainActivity:ComponentActivity() {
        } else {
         LazyColumn(Modifier.weight(1f),contentPadding=PaddingValues(horizontal=24.dp,vertical=12.dp)) {
          item {
+          captureObservations.filter{it.result==dev.localledger.capture.CaptureResult.NOT_AUTHORIZED&&it.pkg !in app.settings.allowedPackages()}.forEach{event->TextButton(onClick={settings=true}){Text("${AppSettings.label(event.pkg)}通知未授权 · 去开启")}}
+          if(totalReview>0)TextButton(onClick={filter="review"}){Text("查看待识别与核对 · $totalReview")}
           if(app.settings.model()==null||app.settings.allowedPackages().isEmpty())Row(Modifier.fillMaxWidth().padding(bottom=8.dp),verticalAlignment=Alignment.CenterVertically){Text("自动记账",Modifier.weight(1f),fontWeight=FontWeight.Medium);TextButton(onClick={settings=true}){Text("完成设置 →")}}
           Surface(shape=RoundedCornerShape(26.dp),color=MaterialTheme.colorScheme.primary,contentColor=MaterialTheme.colorScheme.onPrimary) {
            Column(Modifier.fillMaxWidth().padding(24.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
@@ -170,7 +173,7 @@ class MainActivity:ComponentActivity() {
          }
          if(entries.size==limit)item{TextButton(onClick={limit+=100}){Text("加载更多")}}
          if(filter=="review"&&jobs.isNotEmpty())item{
-          TextButton(onClick={scope.launch{jobs.filter{it.state in setOf("failed","waiting_config")}.forEach{app.database.book().saveJob(it.copy(state="pending",error=null));AnalysisWorker.enqueue(app,it.id)}}}){Text("重新分析 · ${jobs.size}")}
+          TextButton(onClick={scope.launch{jobs.filter{it.state in setOf("failed","waiting_config","needs_review")}.forEach{app.database.book().saveJob(it.copy(state="pending",error=null));AnalysisWorker.enqueue(app,it.id)}}}){Text("重新分析 · ${jobs.size}")}
          }
         }
        }
@@ -351,7 +354,7 @@ class MainActivity:ComponentActivity() {
     if(status.isNotBlank())Text(status)
     HorizontalDivider()
     Text("采集",style=MaterialTheme.typography.titleLarge)
-    CaptureStatus(app)
+    CaptureStatus(app,onAuthorize={consent=it})
     Row {TextButton(onClick={consent="notification"}){Text("通知权限")};TextButton(onClick={consent="accessibility"}){Text("页面权限")};TextButton(onClick={startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,Uri.parse("package:$packageName")))}){Text("后台运行")}}
     Row(verticalAlignment=Alignment.CenterVertically){Text("本机图片识别",Modifier.weight(1f));Switch(screenshots,{screenshots=it;app.settings.screenshots=it})}
     apps.forEach {(pkg,label)->Row(verticalAlignment=Alignment.CenterVertically) {
@@ -376,7 +379,7 @@ class MainActivity:ComponentActivity() {
    clearBook=false;message="账本已清空"
   }}){Text("清空")}},dismissButton={TextButton(onClick={clearBook=false}){Text("取消")}})
   consent?.let {target->
-   val text=when(target){"notification"->"读取已授权应用的支付通知，用于记账。只有交易相关字段会保存到本机。";"accessibility"->"读取已授权应用中你打开的订单和付款页面。不会点击或操作其他应用。开启本机图片识别后，必要时会读取页面截图。";else->"允许读取${AppSettings.label(target)}的交易通知和已打开的订单页面。分析时，必要的脱敏交易信息会发送到你选择的模型接口。"}
+   val text=when(target){"notification"->"读取已授权来源中疑似交易的通知，先在本机脱敏保存，再由所配置的模型判断是否入账。普通微信聊天不会发送。";"accessibility"->"读取已授权应用中你打开的订单和付款页面。不会点击或操作其他应用。开启本机图片识别后，必要时会读取页面截图。";else->"允许读取${AppSettings.label(target)}的交易通知和你打开页面中的疑似交易内容。先在本机过滤联系方式和地址，再交给你配置的模型识别；无法判断的进入待核对。"}
    AlertDialog(onDismissRequest={consent=null},title={Text("授权采集")},text={Text(text)},confirmButton={TextButton(onClick={
     when(target){"notification"->startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS));"accessibility"->startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS));else->{app.settings.allow(target,true);allowed=app.settings.allowedPackages()}}
     consent=null

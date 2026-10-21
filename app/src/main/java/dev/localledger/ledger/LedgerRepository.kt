@@ -101,8 +101,11 @@ class LedgerRepository(private val database:LedgerDatabase,private val book:Book
   book.saveJob(LedgerJob(evidenceId,evidenceId))
   evidenceId
  }
- suspend fun resolveAmount(evidence:Evidence,amount:Long,merchant:String?):String = database.withTransaction {
-  val candidate=ReceiptParser.parse(evidence.text)?:error("交易状态不明确")
+ suspend fun resolveAmount(evidence:Evidence,amount:Long,merchant:String?,confirmedKind:String?=null):String = database.withTransaction {
+  val candidate=if(confirmedKind!=null) {
+   require(confirmedKind in setOf("expense","deferred","refund","repayment","transfer_candidate"))
+   ReceiptCandidate(evidence.text,amount,merchant,null,null,confirmedKind,true)
+  } else ReceiptParser.parse(evidence.text)?:error("交易状态不明确")
   require(candidate.confirmed&&candidate.kind!="cancelled"&&amount>0)
   require(book.forEvidence(evidence.id).isEmpty()) {"这条证据已有账目"}
   val id=ingest(evidence.sourcePackage,"share","resolved:${evidence.id}",evidence.capturedAt,candidate.copy(amountMinor=amount,merchant=merchant?:candidate.merchant))?:error("已处理")

@@ -16,4 +16,4 @@ print(run('install','-r',str(root/'fixtures/build/outputs/apk/debug/fixtures-deb
 run('shell','wm','size','1260x2800');run('shell','wm','density','440')
 result=run('shell','am','instrument','-w','-e','class','dev.localledger.CaptureServiceTest','dev.localledger.test/androidx.test.runner.AndroidJUnitRunner')
 print(result)
-assert 'OK (11 tests)' in result
+assert 'OK (15 tests)' in result

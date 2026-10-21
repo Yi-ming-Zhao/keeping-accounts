@@ -16,7 +16,7 @@ import dev.localledger.LedgerApplication
 import dev.localledger.capture.PaymentAccessibilityService
 import dev.localledger.capture.PaymentNotificationService
 
-@Composable fun CaptureStatus(app:LedgerApplication) {
+@Composable fun CaptureStatus(app:LedgerApplication,onAuthorize:(String)->Unit={}) {
  var revision by remember {mutableIntStateOf(0)}
  var details by remember {mutableStateOf(false)}
  var copied by remember {mutableStateOf(false)}
@@ -31,6 +31,9 @@ import dev.localledger.capture.PaymentNotificationService
  val accessibility=remember(revision){Settings.Secure.getString(app.contentResolver,Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES).orEmpty().split(':').mapNotNull(ComponentName::unflattenFromString).contains(ComponentName(app,PaymentAccessibilityService::class.java))}
  fun status(granted:Boolean,connected:Boolean)=when{!granted->"未授权";connected->"运行中";else->"已授权 · 未连接"}
  Column(verticalArrangement=Arrangement.spacedBy(8.dp)) {
+  observations.filter{it.result==dev.localledger.capture.CaptureResult.NOT_AUTHORIZED&&it.pkg !in app.settings.allowedPackages()}.forEach{event->
+   TextButton(onClick={onAuthorize(event.pkg)}){Text("授权${AppSettings.label(event.pkg)}通知")}
+  }
   Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween){Text("通知读取");Text(status(listener,health.notificationConnected),color=if(listener&&health.notificationConnected)MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error)}
   Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween){Text("页面读取");Text(status(accessibility,health.pageConnected),color=if(accessibility&&health.pageConnected)MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error)}
   if(listener&&!health.notificationConnected)TextButton(onClick={NotificationListenerService.requestRebind(ComponentName(app,PaymentNotificationService::class.java))}){Text("重连通知服务")}

@@ -16,7 +16,10 @@ class ScenarioActivity:Activity() {
   if(intent.getBooleanExtra("passwordField",false)) layout.addView(EditText(this).apply {inputType=android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD;setText("private-password")})
   if(intent.getBooleanExtra("searchField",false)) layout.addView(EditText(this).apply {hint="搜索订单";setText("不应采集的输入内容")})
   (if(intent.getBooleanExtra("combinedNode",false)) listOf(text) else text.lines()).forEach {line->layout.addView(TextView(this).apply {this.text=line;textSize=18f;setTextColor(Color.BLACK);setPadding(0,5,0,5)})}
-  setContentView(ScrollView(this).apply {addView(layout)})
+  if(intent.getBooleanExtra("canvasReceipt",false))setContentView(object:android.view.View(this) {
+   private val ink=android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply{color=Color.BLACK;textSize=52f}
+   override fun onDraw(canvas:android.graphics.Canvas){super.onDraw(canvas);canvas.drawColor(Color.WHITE);text.lines().forEachIndexed{i,line->canvas.drawText(line,70f,180f+i*90f,ink)}}
+  })else setContentView(ScrollView(this).apply {addView(layout)})
   if(intent.getBooleanExtra("churn",false)) {
    val ticker=TextView(this);layout.addView(ticker)
    val handler=android.os.Handler(mainLooper)
@@ -28,7 +31,7 @@ class ScenarioActivity:Activity() {
    val notificationText=intent.getStringExtra("notificationReceipt")?:text
    val manager=getSystemService(NotificationManager::class.java)
    manager.createNotificationChannel(NotificationChannel("payments","交易",NotificationManager.IMPORTANCE_DEFAULT))
-   val builder=Notification.Builder(this,"payments").setSmallIcon(android.R.drawable.ic_dialog_info).setContentTitle("支付通知").setContentText(notificationText)
+   val builder=Notification.Builder(this,"payments").setSmallIcon(android.R.drawable.ic_dialog_info).setContentTitle(intent.getStringExtra("notificationTitle")?:"支付通知").setContentText(notificationText)
    val messages=intent.getStringArrayExtra("paymentMessages")
    if(messages!=null) {
     val style=Notification.MessagingStyle(Person.Builder().setName("样本用户").build())

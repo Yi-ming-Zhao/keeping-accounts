@@ -33,7 +33,11 @@ class CaptureStatusUiTest {
    }
    delay(450)
   }
-  error("界面未显示：$text")
+  fun visible(node:AccessibilityNodeInfo?):List<String> {
+   if(node==null)return emptyList()
+   return listOfNotNull(node.text?.toString()?.takeIf{node.isVisibleToUser})+(0 until node.childCount).flatMap{visible(node.getChild(it))}
+  }
+  error("界面未显示：$text; 当前标签：${visible(instrumentation.uiAutomation.rootInActiveWindow).take(40)}")
  }
  private suspend fun click(text:String) {
   var node=find(text)?:error("UI 缺少 $text")
@@ -47,6 +51,28 @@ class CaptureStatusUiTest {
    val event=android.view.MotionEvent.obtain(time,time+if(action==android.view.MotionEvent.ACTION_UP)50 else 0,action,bounds.exactCenterX(),bounds.exactCenterY(),0)
    try{check(instrumentation.uiAutomation.injectInputEvent(event,true))}finally{event.recycle()}
   }
+ }
+ @Test fun pendingEvidenceAndMissingBankPermissionAreVisible()=runBlocking {
+  check(android.os.Build.MODEL.contains("sdk_gphone"))
+  val id="ui-pending-${System.currentTimeMillis()}"
+  app.database.book().insertEvidence(dev.localledger.data.Evidence(id,id,"dev.localledger.fixtures","notification",System.currentTimeMillis(),"本次购物款将在收货后收取28.80元"))
+  app.database.book().saveJob(dev.localledger.data.LedgerJob(id,id,state="needs_review",error="交易状态待确认"))
+  app.settings.allow("cmb.pb",false)
+  app.captureDiagnostics.record("cmb.pb","notification",dev.localledger.capture.CaptureResult.NOT_AUTHORIZED)
+  instrumentation.startActivitySync(Intent(app,MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK))
+  awaitText("招商银行通知未授权 · 去开启")
+  fun reviewText(node:AccessibilityNodeInfo?):String? {
+   if(node==null)return null
+   node.text?.toString()?.takeIf{it.startsWith("查看待识别与核对 · ")}?.let{return it}
+   for(i in 0 until node.childCount)reviewText(node.getChild(i))?.let{return it}
+   return null
+  }
+  val label=reviewText(instrumentation.uiAutomation.rootInActiveWindow)?:error("待识别入口不可见")
+  click(label)
+  awaitText("交易样本 · 交易状态待确认");click("交易样本 · 交易状态待确认")
+  awaitText("核对交易");awaitText("先用后付 · 待扣款")
+  assertTrue(app.database.book().forEvidence(id).isEmpty())
+  click("取消");delay(400)
  }
  @Test fun disabledServicesAndPrivacySafeDiagnosisAreVisible()=runBlocking {
   check(android.os.Build.MODEL.contains("sdk_gphone"))

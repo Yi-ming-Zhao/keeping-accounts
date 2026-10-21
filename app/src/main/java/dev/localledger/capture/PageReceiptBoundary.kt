@@ -6,7 +6,7 @@ object PageReceiptBoundary {
  fun isReceipt(texts:List<String>,pkg:String?=null):Boolean = texts.any {text->
   // WeChat also exposes chat messages as multi-line nodes. Preserve its stricter
   // standalone-title boundary, even when the chat composer is in voice mode.
-  if(pkg=="com.tencent.mm")text.trim() in ReceiptParser.pageTitles
+  if(pkg in PaymentNoticeContent.privateMessageApps)text.trim() in ReceiptParser.pageTitles
   else text.lines().any {it.trim() in ReceiptParser.pageTitles}
  }
 }

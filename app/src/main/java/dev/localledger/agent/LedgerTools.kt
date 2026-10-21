@@ -18,6 +18,7 @@ class LedgerTools(private val app:LedgerApplication,private val session:String,p
   put(tool("read_entry","读取一笔账的商品和证据。",mapOf("id" to string()),listOf("id")))
   put(tool("read_evidence","读取指定交易的脱敏证据。",mapOf("id" to string()),listOf("id")))
   if(evidenceScope!=null) {
+   put(tool("recognize_transaction","识别当前证据并提交交易事实。kind: expense已实际付款/deferred先用后付待扣款/refund已退款/repayment已还款/transfer_candidate转账充值/unpaid未支付/not_transaction非交易/uncertain不确定。必须给 statusQuote 原文；入账还需 amountMinor(分)、amountQuote 原文、currency=CNY。金额未知省略，绝不猜测或用原价/余额/优惠替代。merchant/orderId/paymentId 仅填原文已有的值。每条证据最多一笔，多笔混杂无法隔离时 uncertain。工具返回账目和订单ID供后续分类。",mapOf("kind" to string(),"statusQuote" to string(),"amountMinor" to integer(),"amountQuote" to string(),"currency" to string(),"merchant" to string(),"orderId" to string(),"paymentId" to string()),listOf("kind","statusQuote")))
    put(tool("classify_entry","根据证据设置分类；不覆盖用户修正。证据不足时不要调用。",mapOf("id" to string(),"category" to string(),"quote" to string()),listOf("id","category","quote")))
    put(tool("attach_items","保存证据中明确出现的商品，不能补造数量或价格。",mapOf("orderId" to string(),"items" to JSONObject().put("type","array").put("maxItems",50).put("items",JSONObject().put("type","object").put("properties",JSONObject().put("name",string()).put("quote",string()).put("category",string()).put("quantity",string()).put("unitPriceMinor",integer()).put("totalMinor",integer())).put("required",JSONArray(listOf("name","quote"))).put("additionalProperties",false))),listOf("orderId","items")))
    put(tool("link_refund","将退款与原支出关联，须有共同订单号证据。",mapOf("refundId" to string(),"originalId" to string()),listOf("refundId","originalId")))
@@ -28,6 +29,10 @@ class LedgerTools(private val app:LedgerApplication,private val session:String,p
    put(tool("correct_entry","按用户指令纠正分类或备注。只有用户明确说以后都这样时才能 remember=true。",mapOf("id" to string(),"category" to string(),"note" to string(),"amountMinor" to integer(),"merchant" to string(),"remember" to JSONObject().put("type","boolean")),listOf("id","category")))
  }
  suspend fun execute(name:String,args:JSONObject,callId:String):String = db.withTransaction {
+  if(evidenceScope!=null&&db===app.database) {
+   val source=book.evidence(evidenceScope)?:error("证据不存在")
+   require(source.sourcePackage in setOf("manual","shared")||source.channel=="share"||source.sourcePackage in app.settings.allowedPackages()) {"来源授权已撤销"}
+  }
   if(userIntent!=null)app.conversation.progress(session,name)
   val receiptKey=ReceiptParser.fingerprint(name+args.toString()+callId)
   db.dao().receipt(session,receiptKey)?.let { return@withTransaction it.result }
@@ -64,6 +69,7 @@ class LedgerTools(private val app:LedgerApplication,private val session:String,p
     val ev=book.evidence(id)?:error("证据不存在")
     JSONObject().put("id",id).put("sourcePackage",ev.sourcePackage).put("text",ev.text)
    }
+   "recognize_transaction" -> RecognitionTool(db).apply(evidenceScope?:error("没有交易证据范围"),args)
    "classify_entry" -> {
     val ev=book.evidence(evidenceScope?:error("不允许自动修改"))?:error("证据不存在")
     val entry=book.entry(args.getString("id"))?:error("账目不存在")
