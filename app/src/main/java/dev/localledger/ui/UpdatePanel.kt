@@ -27,9 +27,17 @@ object ReleaseUpdates {
   for(i in 0..2){if(a[i]!=b[i])return a[i]>b[i]}
   return '-' in current && '-' !in tag
  }
+ fun latestRedirect(location:String):Release {
+  val prefix="$REPOSITORY/releases/tag/"
+  require(location.startsWith(prefix)){"版本地址不正确"}
+  val tag=location.removePrefix(prefix)
+  require(tag.matches(Regex("v[0-9]+\\.[0-9]+\\.[0-9]+"))){"版本格式不正确"}
+  return Release(tag,"",location,newer(tag,BuildConfig.VERSION_NAME))
+ }
  suspend fun check():Release=withContext(Dispatchers.IO) {
   val client=OkHttpClient.Builder().callTimeout(12,TimeUnit.SECONDS).followRedirects(false).build()
-  client.newCall(Request.Builder().url("https://api.github.com/repos/Yi-ming-Zhao/keeping-accounts/releases/latest").header("Accept","application/vnd.github+json").header("User-Agent","QingZhang/${BuildConfig.VERSION_NAME}").build()).execute().use {response->
+  try {
+   return@withContext client.newCall(Request.Builder().url("https://api.github.com/repos/Yi-ming-Zhao/keeping-accounts/releases/latest").header("Accept","application/vnd.github+json").header("User-Agent","QingZhang/${BuildConfig.VERSION_NAME}").build()).execute().use {response->
    check(response.isSuccessful){if(response.code==404)"还没有已发布的版本" else "暂时无法检查更新"}
    val source=response.body?.source()?:error("版本信息为空")
    val buffer=okio.Buffer();var total=0L
@@ -38,6 +46,12 @@ object ReleaseUpdates {
    val json=JSONObject(bytes.toString(Charsets.UTF_8));val tag=json.getString("tag_name")
    require(tag.matches(Regex("v[0-9]+\\.[0-9]+\\.[0-9]+"))) {"版本格式不正确"}
    Release(tag,json.optString("body").take(12000),"$REPOSITORY/releases/tag/$tag",newer(tag,BuildConfig.VERSION_NAME))
+   }
+  } catch(e:CancellationException){throw e}
+  catch(_:Exception){ /* Public API rate limiting must not disable update discovery. */ }
+  client.newCall(Request.Builder().url("$REPOSITORY/releases/latest").head().header("User-Agent","QingZhang/${BuildConfig.VERSION_NAME}").build()).execute().use{response->
+   check(response.code in setOf(301,302,303,307,308)){"暂时无法检查更新"}
+   latestRedirect(response.header("Location")?:error("版本地址为空"))
   }
  }
 }

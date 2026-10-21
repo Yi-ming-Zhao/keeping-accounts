@@ -1,0 +1,89 @@
+{
+  "version": "0.3.1",
+  "versionCode": 7,
+  "date": "2026-10-22",
+  "channel": "stable",
+  "device": "ARM64 Android 16 emulator, 1260x2800",
+  "physicalDeviceVerified": false,
+  "actualWechatNotificationVerified": false,
+  "artifacts": [
+    {
+      "file": "keeping-accounts-0.3.1-arm64.apk",
+      "bytes": 24307919,
+      "sha256": "0f05e8ec1d4930fa5ab18ec3f7df631421b7d7ddf1701a7368543e147708ad8c"
+    },
+    {
+      "file": "keeping-accounts-0.3.1-source.zip",
+      "bytes": 6008892,
+      "sha256": "4f16fb1a41c1232007e6fe530f85f7cd29ed8bfe41b0634b9ed1f54e33c38930"
+    }
+  ],
+  "signatureVerified": true,
+  "zipAlignment16KB": true,
+  "nativeLibraries": [
+    {
+      "path": "lib/arm64-v8a/libandroidx.graphics.path.so",
+      "minLoadAlignment": 16384
+    },
+    {
+      "path": "lib/arm64-v8a/libjpeg.so",
+      "minLoadAlignment": 16384
+    },
+    {
+      "path": "lib/arm64-v8a/libleptonica.so",
+      "minLoadAlignment": 16384
+    },
+    {
+      "path": "lib/arm64-v8a/libpngx.so",
+      "minLoadAlignment": 16384
+    },
+    {
+      "path": "lib/arm64-v8a/libquickjs.so",
+      "minLoadAlignment": 16384
+    },
+    {
+      "path": "lib/arm64-v8a/libsqlcipher.so",
+      "minLoadAlignment": 16384
+    },
+    {
+      "path": "lib/arm64-v8a/libtesseract.so",
+      "minLoadAlignment": 16384
+    }
+  ],
+  "credentialScanPassed": true,
+  "upgrade": {
+    "from": "0.3.0",
+    "to": "0.3.1",
+    "passed": true,
+    "evidence": ".local/v031-upgrade.log"
+  },
+  "updateChecks": {
+    "unitChecks": 2,
+    "actualPublishedReleaseReadPassed": true,
+    "observedTagBeforePublication": "v0.3.0",
+    "evidence": ".local/v031-update-check.log",
+    "trigger": "GitHub anonymous API returned HTTP 403 with rate limit remaining 0; official latest release HEAD returned 302"
+  },
+  "functionalEvidence": {
+    "releaseAndroidChecks": 23,
+    "finalVisibilityRegressionChecks": 3,
+    "releaseEvidence": [
+      ".local/v030-final-validation.log (first 6 checks)",
+      ".local/v030-final-services.log",
+      ".local/v030-final-ui.log",
+      ".local/v030-visibility.log"
+    ],
+    "livePiModelNotificationCases": [
+      "unknown_expense_638",
+      "unknown_deferred_2880",
+      "advertisement_ignored",
+      "image_only_receipt_638"
+    ],
+    "liveModelEvidence": ".local/v030-live-complete.log",
+    "documents": [
+      "docs/RELEASE_0.3.0.md"
+    ]
+  },
+  "reusedEvidence": "Capture and Pi processing unchanged from v0.3.0 (a0c6e6d). See verification-0.3.0.json",
+  "releaseDocument": "docs/RELEASE_0.3.0.md"
+}

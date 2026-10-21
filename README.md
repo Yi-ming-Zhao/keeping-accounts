@@ -4,7 +4,9 @@ Android 本地加密账本。用 Pi 分析交易、分类商品、对话记账�
 
 [下载 APK](https://github.com/Yi-ming-Zhao/keeping-accounts/releases/latest) · [实际验证范围](docs/COVERAGE.md) · [版本记录](CHANGELOG.md)
 
-## 0.3.0
+## 0.3.1
+
+包含 0.3.0 的全部交易识别修复，另修复 GitHub 匿名接口限流导致的更新检查失败。
 
 新增 agent 交易识别通道。固定解析器不认识的疑似交易会先脱敏保存，由 Pi 判断金额与付款状态；原生工具校验原文引用后入账。不确定、断网或模型未配置时，证据保留在待核对中。银行通知来源未授权时明确提示。
 
